@@ -209,10 +209,11 @@ Rectangle :: struct {
 }
 
 Text :: struct {
-    pos: Vector2,
+	pos:   Vector2,
 	text:  string,
 	size:  f32,
 	color: Color,
+    font: rl.Font
 }
 
 Animation_Element :: union {
@@ -229,35 +230,32 @@ draw_frame :: proc(frame: Frame, image: ^rl.Image) {
 		switch type in element {
 		case Rectangle:
 			draw_rect(image, element.(Rectangle))
-        case Text:
-            draw_text(image, element.(Text))
+		case Text:
+			draw_text(image, element.(Text))
 		}
 
 	}
 }
 
 to_rl_color :: proc(color: Color) -> rl.Color {
-    return {
-			u8(color.r),
-			u8(color.g),
-			u8(color.b),
-			u8(color.a),
-		}
+	return {u8(color.r), u8(color.g), u8(color.b), u8(color.a)}
 }
 
 draw_rect :: proc(image: ^rl.Image, rectangle: Rectangle) {
-	rl.ImageDrawRectangleV(
-		image,
-		rectangle.pos,
-		rectangle.size,
-		to_rl_color(rectangle.color)
-	)
+	rl.ImageDrawRectangleV(image, rectangle.pos, rectangle.size, to_rl_color(rectangle.color))
 }
 
-draw_text :: proc(image: ^rl.Image, text:Text) {
-    cstr := strings.clone_to_cstring(text.text)
-    rl.ImageDrawText(image, cstr,i32(text.pos.x),i32(text.pos.y),i32(math.round(text.size)),to_rl_color(text.color))
-    fmt.println("hi!")
+draw_text :: proc(image: ^rl.Image, text: Text) {
+	cstr := strings.clone_to_cstring(text.text)
+	rl.ImageDrawTextEx(
+		image,
+        text.font,
+		cstr,
+		text.pos,
+		text.size,
+        0,
+		to_rl_color(text.color),
+	)
 }
 
 Animated :: struct($T: typeid) {
@@ -286,42 +284,41 @@ chain :: proc(sub_animations: []Animated($T)) -> Animated(T) {
 	return {full_anim}
 }
 
-text_lerp :: proc(from_string: string, to_string: string, value: f32) -> string {
-	from := transmute([]u8)(strings.clone(from_string))
-	to := transmute([]u8)(strings.clone(to_string))
+text_lerp :: proc(from: string, to: string, value: f32) -> string {
+	to_len := len(to)
+	from_len := len(from)
+    float_to_len := f32(to_len)
+    float_from_len := f32(from_len)
 
-	// left to right
-	if len(to) >= len(from) {
-		current := math.floor(f32(len(to)) * value)
-		currentLength := int(math.floor(math.lerp(f32(len(from) - 1), f32(len(to)), value)))
+	if to_len >= from_len {
+		current := int(math.floor(float_to_len * value))
+		currentLength := int(math.floor(math.lerp(float_from_len - 1, float_to_len, value)))
 		text := strings.Builder{}
-		for i in 0 ..< len(to) {
-			if f32(i) < current {
+
+		for i in 0 ..< to_len {
+			if i < current {
 				strings.write_byte(&text, to[i])
-			} else if i < len(from) || i <= currentLength {
-				if i < len(from) {
-					strings.write_byte(&text, from[i])
-				} else {
-					strings.write_byte(&text, to[i])
-				}
+			} else if i < len(from) {
+				strings.write_byte(&text, from[i])
+			} else if i <= currentLength {
+				strings.write_byte(&text, to[i])
 			}
 		}
 
 		return strings.to_string(text)
 	} else {
-		current := int(math.round(f32(len(from)) * (1 - value)))
-		currentLength := int(math.floor(math.lerp(f32(len(from) + 1), f32(len(to)), value)))
-		// Reversed
+		current := int((float_from_len) * (1 - value))
+		currentLength := int(math.floor(math.lerp(float_from_len + 1, float_to_len, value)))
+
 		text := strings.Builder{}
+
 		for i := len(from) - 1; i >= 0; i -= 1 {
 			if i < current {
 				strings.write_byte(&text, from[i])
-			} else if (i < len(to) || i < currentLength) {
-				if i < len(to) {
-					strings.write_byte(&text, to[i])
-				} else {
-					strings.write_byte(&text, from[i])
-				}
+			} else if i < len(to) {
+				strings.write_byte(&text, to[i])
+			} else if i < currentLength {
+				strings.write_byte(&text, from[i])
 			}
 		}
 
